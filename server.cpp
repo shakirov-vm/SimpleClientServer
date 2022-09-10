@@ -5,11 +5,9 @@
 #include <utility>
 #include <boost/asio.hpp>
 #include <string>
+#include <unistd.h>
 
 //namespace client_server {
-
-//using WIN_STRING = "You win\n";
-//#define WIN_STRING "You win\n"
 
 //compile: g++ server.cpp -o server -lpthread
 
@@ -21,52 +19,66 @@ void session(tcp::socket sock) {
 
 	try {
 
-		const char num[4] = {'2', '5', '7', '8'};
+		for(;;) {
 
-		for (;;) {
+			int generated = std::rand() % 10000;
+			if (generated < 1000) generated += 1000;
+			std::string num = std::to_string(generated);
+			std::cout << "generated num is " << num << std::endl;
 
-			std::string reply("0000");
-			int beefs = 0, cows = 0;
+			for (;;) {
 
-			//boost::system::error_code error;
-			
-            size_t length = boost::asio::read(sock, boost::asio::buffer(reply, reply.size()));
-			std::cout << "client enter " << reply << " and length " << length << std::endl;
+				std::string reply(4, '\0');
 
-			if (length != 4) std::cout << "Oops, len is " << length << std::endl;
-			/*if (error == boost::asio::error::eof)
-				break; // Connection closed cleanly by peer.
-			else if (error)
-				throw boost::system::system_error(error); // Some other error.*/
+				boost::system::error_code error;
+				std::cout << "Before first read" << std::endl;
+	            size_t length = boost::asio::read(sock, boost::asio::buffer(reply, reply.size()), error); // Is it blocked there?
 
-			for (int i = 0; i < 4; i++) {
+				std::cout << "After first read" << std::endl;
+				if (length != 4) std::cout << "Oops, len is " << length << std::endl;
+				if (error == boost::asio::error::eof)
+					break; // Connection closed cleanly by peer.
+				else if (error)
+					throw boost::system::system_error(error); // Some other error.
 				
-				if (num[i] == reply[i]) {
-					beefs++;
-					cows--;
+				int beefs = 0, cows = 0;		 // 4 because of 4-digit number
+				for (int i = 0; i < 4; i++) {
+					
+					if (num[i] == reply[i]) {
+						beefs++;
+						cows--;
+					}
+					for (int j = 0; j < 4; j++) {
+						if (num[i] == reply[j]) cows++;
+					}
 				}
-				for (int j = 0; j < 4; j++) {
-					if (num[i] == reply[j]) cows++;
+
+				std::string request;
+
+				if (beefs == 4) { 
+					request = std::string("You win\n");
+				} else {
+					char data_1[21] = {0};
+					std::sprintf(data_1, "beefs - %d, cows - %d\n", beefs, cows);
+					request = std::string(data_1);
+					// request = std::string("beefs - %d, cows - %d\n", beefs, cows);
 				}
-			}
-
-			std::string request;
-
-			if (beefs == 4) { 
-				request = std::string("You win\n");
 				length = request.size();
+				std::cout << "server answer " << request << "and length is " << length << std::endl;
+				boost::asio::write(sock, boost::asio::buffer(&length, sizeof(size_t)));
+				boost::asio::write(sock, boost::asio::buffer(request, length));
+
+				if (length == std::string("You win\n").size()) {
+					
+					std::cout << "Yes, there" << std::endl;
+
+           			char answer = '\0';
+					boost::asio::read(sock, boost::asio::buffer(&answer, sizeof(char)));
+					std::cout << "READ ANSWER" << std::endl;
+					if (answer == 'n') return;
+					break;
+				}
 			}
-			else {
-				char data_1[21] = {0};
-				std::sprintf(data_1, "beefs - %d, cows - %d\n", beefs, cows);
-				request = std::string(data_1);
-				// request = std::string("beefs - %d, cows - %d\n", beefs, cows);
-			}
-			length = request.size();
-			std::cout << "server answer " << request << "and length is " << length << std::endl;
-			boost::asio::write(sock, boost::asio::buffer(&length, sizeof(size_t)));
-			boost::asio::write(sock, boost::asio::buffer(request, length));
-			if (length == 8) return;
 		}
 
 	} catch (std::exception& e) {
